@@ -12,6 +12,8 @@ contract CarRental is ERC721, Ownable {
     // define some milage caps for the leasing deals
     uint256[] public MilageCaps = [1000, 5000, 10000, 15000, 20000];
 
+    enum State { Locked , Unlocked }
+
     struct Car {
         string model;
         string color; 
@@ -21,14 +23,16 @@ contract CarRental is ERC721, Ownable {
     }
 
     struct Lease {
+        State state; 
         uint256 monthly_quota;
         address leasee;
         uint256 start_date;
         uint256 contract_duration;
+        bool isActive;
+        uint256 paidAmount;
     }
-
-    uint256 public nextTokenId;
-    uint256 public nextLeaseId;
+    
+    uint256 public nexttokenId;
     mapping(uint256 => Car) public cars;     // Token ID to Car struct
     mapping(uint256 => Lease) public leases; // Token ID to Leasing struct
 
@@ -43,31 +47,37 @@ contract CarRental is ERC721, Ownable {
         uint256 original_value,
         uint256 milage
         )public onlyOwner {
-        uint256 tokenId = nextTokenId;
+        uint256 tokenId = nexttokenId;
         cars[tokenId] = Car(model, color, year_of_matriculation, original_value, milage);
         _safeMint(owner(), tokenId);
-        nextTokenId++;
+        nexttokenId++;
 
     }
 
-    function getCar(uint256 _carId) public view returns (Car memory) {
-    return cars[_carId];
+    function getCar(uint256 _tokenId) public view returns (Car memory) {
+    return cars[_tokenId];
     }
 
     function registerLease(
-        uint256 carId,
-        address leassee,
+        uint256 tokenId,
         uint256 milageCapIndex, // changed to this name instead of  `mileageCapIndex` for consistence with the function definition.
         uint256 driverExperience,
-        uint256 contractDuration,
-        uint256 startDate
-        ) public {
-            Car memory existingCar = getCar(carId);
+        uint256 contractDuration
+        ) public payable {
+            Car memory existingCar = getCar(tokenId);
             uint256 monthlyQuota = calculateMonthlyQuota(existingCar.original_value, existingCar.milage, driverExperience , MilageCaps[milageCapIndex], contractDuration );
             uint256 downPayment = (3*monthlyQuota);
-            uint256 leaseId = nextLeaseId;
-            leases[leaseId] = Lease(monthlyQuota,leassee,startDate,contractDuration);
+            require(msg.value >= downPayment + monthlyQuota, "Insufficient funds");
 
+            leases[tokenId] = Lease(
+            State.Locked,
+            monthlyQuota,
+            msg.sender,
+            block.timestamp,
+            contractDuration,
+            true,
+            msg.value
+        );
         }
 
     // function to calculate monthly quota for a car
@@ -78,10 +88,13 @@ contract CarRental is ERC721, Ownable {
         uint256 mileageCap,
         uint256 contractDuration
       ) public pure returns (uint256) {
-          return (
-              ((originalValue * 1000000) / 10000000 - 
-                  (mileage * 100000)   / 100000 + 
-                (10000000 - driverExperience * 200)) +
-               contractDuration + mileageCap);
+        //write more readable code
+        uint256 baseQuota = originalValue / 100; // Base monthly quota (for simplicity)
+        uint256 experienceDiscount = driverExperience * 2; // Discount per experience year
+        uint256 mileageFactor = mileage / 1000; // Increase based on mileage
+        uint256 durationFactor = contractDuration > 12 ? 5 : 0; // Discount for long-term lease
+        //h
+        return 1;
       }
+
 }
