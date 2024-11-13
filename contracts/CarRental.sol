@@ -10,13 +10,17 @@ import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.8.0/contr
 /// @title CarLeasing
 contract CarLeasing is ERC721, Ownable {
 
-    // define some milage caps for the leasing deals
-    // TODO: These enums needs to be used.
+    // MilageCaps for the lease.
     uint[] public MilageCaps = [1000, 5000, 10000, 15000, 20000];
 
+    // One month, two month, three months, six months, 12 months
+    uint[] public ContractDuration = [30 days, 60 days, 90 days, 180 days, 360 days];
+
+
+    // Used to track the state of the contract.
     enum State { Locked , Unlocked }
 
-
+    // Task 1
     struct Car {
         string model;
         string color; 
@@ -27,9 +31,9 @@ contract CarLeasing is ERC721, Ownable {
 
     struct Lease {
         State state; 
-        uint monthly_quota;
+        uint monthlyQuota;
         address leasee;
-        uint start_date;
+        uint startTime;
         uint contractDuration;
         uint nextMonthlyPaymentDue;
         bool isActive;
@@ -52,7 +56,8 @@ contract CarLeasing is ERC721, Ownable {
 
     constructor() ERC721("CarLeasing", "CL") {}
 
-
+    // Task 1
+    // @notice Creates a new car as an NFT. The car can be leased to customers after creation.
     function createCar(
         string memory model,
         string memory color, 
@@ -65,8 +70,9 @@ contract CarLeasing is ERC721, Ownable {
 
         // Mint to create a NFT.
         _safeMint(owner(), tokenId);
-        nextTokenId++;
 
+        // Increment tokenId for the next car to be created.
+        nextTokenId++;
     }
 
     // Task 3
@@ -76,7 +82,7 @@ contract CarLeasing is ERC721, Ownable {
         uint driverExperience,
         uint mileageCap,
         uint contractDuration
-      ) public pure returns (uint) {
+      ) private pure returns (uint) {
         // Making this function pure such that it cannot access any state nor change states
 
         // Add requirements to make sure there are no negative values.
@@ -95,20 +101,28 @@ contract CarLeasing is ERC721, Ownable {
     }
 
     // Task 3
+    // @notice Registers a lease for an existing car. Lease is inactive untill confirmed by owner.
     function registerLease(
         uint tokenId,
-        uint milageCapIndex, // changed to this name instead of  `mileageCapIndex` for consistence with the function definition.
         uint driverExperience,
-        uint contractDuration
+        uint milageCapIndex,
+        uint contractDurationIndex
         ) public payable {
-            Car memory existingCar = cars[tokenId];
-            uint monthlyQuota = calculateMonthlyQuota(existingCar.originalValue, existingCar.milage, driverExperience , MilageCaps[milageCapIndex], contractDuration );
+            Car memory car = cars[tokenId];
+
+            // Prevent index out of range errors.
+            require(contractDurationIndex < ContractDuration.length, "contractDurationIndex out of range");
+            require(milageCapIndex < MilageCaps.length, "milageCapIndex out of range");
+
+            uint contractDuration = ContractDuration[contractDurationIndex];
+            uint milageCap = MilageCaps[milageCapIndex];
+
+            uint monthlyQuota = calculateMonthlyQuota(car.originalValue, car.milage, driverExperience , milageCap, contractDuration);
             uint downPayment = (3*monthlyQuota);
             require(msg.value >= downPayment + monthlyQuota, "Wrong payment amount");
             require(carInActiveLease[tokenId] == false, "Car is already leased");
             
             // Send back money that are over.
-
             leases[tokenId] = Lease(
                 State.Locked,
                 monthlyQuota,
@@ -120,12 +134,16 @@ contract CarLeasing is ERC721, Ownable {
                 0,
                 true,
                 // TODO: This should only transfer the neccessary amount and give back the excess payment.
+                // This funds are locked in the contract until owner has confirmed the lease.
                 msg.value
             );
+
+            // Set that the car is in an active lease.
             carInActiveLease[tokenId] = true;
     }
 
     // Task 3 (& 5c?)
+    // @notice Confirms the lease by owner. Lease will become active, and funds will be transfered from leasee to owner of the car. 
     function confirmLease(uint tokenId) public onlyOwner {
         // Find lease for correct car with tokenId.
         Lease memory lease = leases[tokenId];
@@ -142,18 +160,24 @@ contract CarLeasing is ERC721, Ownable {
         // The lease is locked. 
         lease.state = State.Unlocked;
 
-        lease.nextMonthlyPaymentDue = 30;
+        // Start the lease when confirmed.
+        lease.startTime = block.timestamp;
 
+        // Lease is payed each 30 days. (suffix days converts days into seconds.)
+        lease.nextMonthlyPaymentDue = lease.startTime + 30 days;
+
+        // Store the modified lease object in the mapping.
         leases[tokenId] = lease;
     }
 
     // Task 3 & 4
+    // @notice Used for paying the monthly fee for the lease.
     function payMonthlyQuota(uint tokenId) public payable {
         // Find lease for correct car with tokenId.
         Lease memory lease = leases[tokenId];
         
         require(msg.sender == lease.leasee, "Msg sender must be the same person as leasee.");
-        require(msg.value  >= lease.monthly_quota, "Wrong payment amount");
+        require(msg.value  >= lease.monthlyQuota, "Wrong payment amount");
         
         address payable ownerPayable  = payable(owner());
 
@@ -164,11 +188,12 @@ contract CarLeasing is ERC721, Ownable {
         // 30 days will be converted 30 days in seconds.
         lease.nextMonthlyPaymentDue += 30 days;
 
+        // Store the modified lease object in the mapping.
         leases[tokenId] = lease;
     }
 
     // Task 4 & 5
-    function terminateLease(uint tokenId) private {
+    function terminateLease(uint tokenId) private onlyOwner {
         address carOwner = owner();
         Lease memory lease = leases[tokenId];
         require(msg.sender == carOwner || msg.sender == lease.leasee, "Car owner and leasee are the only people who can terminate the contract");
@@ -189,7 +214,7 @@ contract CarLeasing is ERC721, Ownable {
         require(lease.state == State.Unlocked, "The lease must be confirmed.");
         
         // The monthly quota is not payed for the given month + 2 days extra to be nice :).
-        require(block.timestamp > lease.nextMonthlyPaymentDue + 2 days);
+        require(block.timestamp > (lease.startTime + lease.nextMonthlyPaymentDue + 2 days), "The leasee has payed the monthly quota for the given month. The contract will not be terminated.");
 
         // Lease is terminated.
         terminateLease(tokenId);
@@ -203,7 +228,7 @@ contract CarLeasing is ERC721, Ownable {
     // Task 5
     function leaseHasEnded(Lease memory lease) private view returns (bool){
         // Checks if the lease has ended.
-        return block.timestamp >= lease.contractDuration + lease.start_date;
+        return block.timestamp >= lease.contractDuration + lease.startTime;
     }
 
     // Task 5
@@ -220,7 +245,7 @@ contract CarLeasing is ERC721, Ownable {
         // Extend the lease by one year
         // Change the monthly quota payment.
         else if (optionId == 1) {
-            // TODO : Create this function.
+            // TODO : Create this function. Extend the lease and re-calculate monthly quota.
             // extendLeaseWithOneYear()
         }
 
