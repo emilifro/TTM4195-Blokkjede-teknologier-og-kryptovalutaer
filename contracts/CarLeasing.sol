@@ -244,32 +244,71 @@ contract CarLeasing is ERC721, Ownable {
     }
 
     // Task 5
+
+    /*
+    @notice Returns whether the lease has ended or not  
+    @return true if current date is after the end date of the lease 
+    @Param lease includes leasing detials like startime and contract duration 
+    */
     function leaseHasEnded(Lease memory lease) private view returns (bool){
         // Checks if the lease has ended.
         return block.timestamp >= lease.contractDuration + lease.startTime;
     }
 
+    /*
+    @notice Terminates lease if the lease has ended  
+    @Param tokenId is the car lease that whish to be terminated
+    @Param addedMilage is the milage the lessee has added to the car 
+    */
     function terminateLeaseOnEnd(uint tokenId, uint addedMileage) public {
         Lease memory lease = leases[tokenId];
+        
+        //Checks if the lease has ended 
         require(leaseHasEnded(lease), "Lease has not ended.");
+
+        //Terminate the lease 
         terminateLease(tokenId, addedMileage);
     }
 
+    /*
+    @notice Extend the duration of a lease when it has ended and update leasing details
+    @Param tokenId is the car lease that whish to be extended
+    @Param addedMilage is the milage the lessee has added to the car 
+    */
     function extendLeaseOnEnd(uint tokenId, uint addedMileage) public {
         Lease memory lease = leases[tokenId];
+
+        //Checks if the lease has ended 
         require(leaseHasEnded(lease), "Lease has not ended.");
+
+        //add mileage to the leased car when the lease has ended 
         cars[tokenId].mileage += addedMileage;
 
+        //Calculate the new monthly quota after the mileage has been updated
         uint newQuota = calculateMonthlyQuota(cars[tokenId].originalValue, cars[tokenId].mileage, lease.driverExperience, lease.mileageCap, lease.contractDuration);
-
+        
+        //Check if the new montnly quoata is lower than the previous quoata before updating quota in lease
         if (newQuota < lease.monthlyQuota) {
             lease.monthlyQuota = newQuota;
         }
+
+        //Update the duration of the lease with 1 year 
         lease.contractDuration += 365 days;
+
+        //Update and extend the lease based on new details 
         leases[tokenId] = lease;
 
     }
 
+    /*
+    @notice Terminate the pervious lease and register a new lease for a new car
+    @Param tokenId is the car lease that whish to be extended
+    @Param addedMilage is the milage the lessee has added to the car 
+    @Param newToken is the new car and lease created 
+    @Param driverExperience is how long the driver has had its licence 
+    @Param mileageCapIndex is how long the driver can drive the car with the new lease 
+    @Param contractDurationIndex is the duration of the new lease 
+    */
     function registerNewLeaseOnEnd(
         uint tokenId, 
         uint addedMileage,
@@ -277,8 +316,11 @@ contract CarLeasing is ERC721, Ownable {
         uint driverExperience,
         uint mileageCapIndex,
         uint contractDurationIndex) public {
-
+        
+        //Terminates the previous contract 
         terminateLeaseOnEnd(tokenId, addedMileage);
+
+        //Register a lease for a new car 
         registerLease(newTokenId, driverExperience, mileageCapIndex, contractDurationIndex);
     }
 }
