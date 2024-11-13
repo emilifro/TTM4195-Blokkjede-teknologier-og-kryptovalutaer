@@ -52,9 +52,6 @@ contract CarLeasing is ERC721, Ownable {
     // One car can only be in one lease, therefore we use the same token ID for cars and lease.
     mapping(uint => Lease) public leases;
 
-    // Mapping to check if car is in an active lease. Used when creating a contract.
-    mapping(uint => bool) public carInActiveLease;
-
 
     constructor() ERC721("CarLeasing", "CL") {}
 
@@ -156,7 +153,6 @@ contract CarLeasing is ERC721, Ownable {
                 // No next payment due before lease is confirmed.
                 0,
                 true,
-                // TODO: This should only transfer the neccessary amount and give back the excess payment.
                 // This funds are locked in the contract until owner has confirmed the lease.
                 msg.value,
                 driverExperience,
@@ -164,7 +160,7 @@ contract CarLeasing is ERC721, Ownable {
             );
     }
 
-    // Task 3 (& 5c?)
+    // Task 3
     // @notice Confirms the lease by owner. Lease will become active, and funds will be transfered from leasee to owner of the car. 
     function confirmLease(uint tokenId) public onlyOwner {
         // Find lease for correct car with tokenId.
@@ -175,8 +171,6 @@ contract CarLeasing is ERC721, Ownable {
 
         // Find the address to the owner of the car (owner of the contract)
         address payable ownerPayable  = payable(owner());
-
-
 
         // Transfer money to owner
         ownerPayable.transfer(lease.monthlyQuota);
@@ -204,9 +198,12 @@ contract CarLeasing is ERC721, Ownable {
         require(msg.value  >= lease.monthlyQuota, "Wrong payment amount");
         
         address payable ownerPayable  = payable(owner());
-        lease.paidAmount += msg.value - lease.monthlyQuota;
+
+        uint overpay = msg.value - lease.monthlyQuota;
+
+        lease.paidAmount += overpay;
         // Pay the owner of the contract. Should this be the car owner???
-        ownerPayable.transfer(lease.monthlyQuota);
+        ownerPayable.transfer(msg.value - overpay);
 
         // Extend the next monthly payment due with 30 days.
         // 30 days will be converted 30 days in seconds.
@@ -217,35 +214,33 @@ contract CarLeasing is ERC721, Ownable {
     }
 
     // Task 4 & 5
-    function terminateLease(uint tokenId) private onlyOwner {
-        address carOwner = owner();
+    function terminateLease(uint tokenId, uint addedMileage) private onlyOwner {
+        // address carOwner = owner();
         Lease memory lease = leases[tokenId];
         
-        // This is not really used for anything, maybe not have it???
-        leases[tokenId].isActive = false;
+        // Update car mileage
+        cars[tokenId].mileage += addedMileage;
 
-        // The car can now be leased to other customers.
-        carInActiveLease[tokenId] = false;
+        // Deposit will be payed back
+        payable(lease.leasee).transfer(lease.paidAmount);
+
+        // Another lease can be signed for this car
+        leases[tokenId].isActive = false;
     }
     
 
     // Task 4
-    function terminateLeaseIfMonthlyPaymentNotRecieved(uint tokenId) public onlyOwner{
+    function terminateLeaseIfMonthlyPaymentNotRecieved(uint tokenId, uint addedMileage) public onlyOwner{
         Lease memory lease = leases[tokenId];
 
         // Verify that the lease is Unlocked (started)
-        //require(lease.state == State.Unlocked, "The lease must be confirmed.");
+        require(lease.state == State.Unlocked, "The lease must be confirmed.");
         
         // The monthly quota is not payed for the given month.
-        //require(block.timestamp > (lease.startTime + lease.nextMonthlyPaymentDue), "The leasee has payed the monthly quota for the given month. The contract will not be terminated.");
+        require(block.timestamp > (lease.startTime + lease.nextMonthlyPaymentDue), "The leasee has payed the monthly quota for the given month. The contract will not be terminated.");
 
         // Lease is terminated.
-        terminateLease(tokenId);
-        
-        // if (block.timestamp > lease.nextMonthlyPaymentDue + 2 days){
-        //     // Lease has not payed, and the lease will be terminated by car owner.
-            
-        // }
+        terminateLease(tokenId, addedMileage);
     }
 
     // Task 5
@@ -254,38 +249,36 @@ contract CarLeasing is ERC721, Ownable {
         return block.timestamp >= lease.contractDuration + lease.startTime;
     }
 
-    // Task 5
-    function handleEndOfLease(uint tokenId, uint optionId, uint addedMileage) public payable {
+    function terminateLeaseOnEnd(uint tokenId, uint addedMileage) public {
+        Lease memory lease = leases[tokenId];
+        require(leaseHasEnded(lease), "Lease has not ended.");
+        terminateLease(tokenId, addedMileage);
+    }
+
+    function extendLeaseOnEnd(uint tokenId, uint addedMileage) public {
         Lease memory lease = leases[tokenId];
         require(leaseHasEnded(lease), "Lease has not ended.");
         cars[tokenId].mileage += addedMileage;
-        
-        // Terminate the contract.
-        if (optionId == 0){
-            terminateLease(tokenId);
-            payable(lease.leasee).transfer(lease.paidAmount);
+
+        uint newQuota = calculateMonthlyQuota(cars[tokenId].originalValue, cars[tokenId].mileage, lease.driverExperience, lease.mileageCap, lease.contractDuration);
+
+        if (newQuota < lease.monthlyQuota) {
+            lease.monthlyQuota = newQuota;
         }
+        lease.contractDuration += 365 days;
+        leases[tokenId] = lease;
 
-        // Extend the lease by one year
-        // Change the monthly quota payment.
-        else if (optionId == 1) {
-            // TODO : Create this function. Extend the lease and re-calculate monthly quota.
-            // extendLeaseWithOneYear()
-            uint newQuota = calculateMonthlyQuota(cars[tokenId].originalValue, cars[tokenId].mileage, lease.driverExperience, lease.mileageCap, lease.contractDuration);
+    }
 
-            if (newQuota < lease.monthlyQuota) {
-                lease.monthlyQuota = newQuota;
-            }
-            lease.contractDuration += 365 days;
-            leases[tokenId] = lease;
-        }
+    function registerNewLeaseOnEnd(
+        uint tokenId, 
+        uint addedMileage,
+        uint newTokenId,
+        uint driverExperience,
+        uint mileageCapIndex,
+        uint contractDurationIndex) public {
 
-        // Sign a lease with a new vehicle.
-        else if (optionId == 2) {
-            // Sets the car to not be in any active lease.
-            // Should this also create a new lease??
-            // TODO: Think about something smart here.
-
-        }
+        terminateLeaseOnEnd(tokenId, addedMileage);
+        registerLease(newTokenId, driverExperience, mileageCapIndex, contractDurationIndex);
     }
 }
