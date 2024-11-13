@@ -84,24 +84,46 @@ contract CarLeasing is ERC721, Ownable {
         uint contractDuration
       ) private pure returns (uint) {
         // Making this function pure such that it cannot access any state nor change states
+        // Pure functions do not cost any gas
 
         // Add requirements to make sure there are no negative values.
         require(originalValue > 0, "Original car value must be greater than 0");
-        require(driverExperience > 0, "Drives experience must be greater than 0");
+        require(driverExperience > 0, "Driver experience must be greater than 0");
         require(mileageCap > 0, "Mileage cap must be greater than 0");
         require(contractDuration > 0, "Contract duration must be greater than 0");
         // Calculates monthly quota for a car.
 
-        // TODO: Use these values. We had a problem that the values became negative. This is not possible with uints.
-        uint baseQuota = originalValue / 100; // Base monthly quota (for simplicity)
-        uint experienceDiscount = driverExperience * 2; // Discount per experience year
-        uint mileageFactor = mileage / 1000; // Increase based on mileage
-        uint durationFactor = contractDuration > 12 ? 5 : 0; // Discount for long-term lease
-        return 1;
+        
+        uint baseQuota = originalValue / 100; // 1% of car value
+
+        // Given that mileage will have an impact: a mileage of 100 000 should might reduce the quota by 10%
+
+        uint mileageReduction = baseQuota * mileage / 1000000;
+
+        uint insuranceCost = baseQuota * 10 / (100 + driverExperience * 5); // Reduces from 10% of base quota
+
+        uint mileageCapReduction;
+        if (mileageCap == 1000) {
+            mileageCapReduction = baseQuota / 5; //20% reduction
+        } else if (mileageCap == 5000) {
+            mileageCapReduction = baseQuota / 10; //10% reduction
+        } else if (mileageCap == 10000) {
+            mileageCapReduction = baseQuota / 20; //5% reduction
+        } else if (mileageCap == 15000) {
+            mileageCapReduction = baseQuota / 100; //1% reduction
+        } else if (mileageCap == 20000) {
+            mileageCapReduction = 0; //0 % reduction
+        } else {
+            revert("Unsupported mileage cap");
+        }
+        // 10% reduction if contract is longer than 3 months
+        uint contractDurationReduction = (contractDuration >= 90 days) ? baseQuota / 10 : 0;
+
+        return baseQuota - mileageReduction - mileageCapReduction - contractDurationReduction + insuranceCost;
     }
 
     // Task 3
-    // @notice Registers a lease for an existing car. Lease is inactive untill confirmed by owner.
+    // @notice Registers a lease for an existing car. Lease is inactive until confirmed by owner.
     function registerLease(
         uint tokenId,
         uint driverExperience,
