@@ -81,10 +81,10 @@ contract CarLeasing is ERC721, Ownable {
         nextTokenId++;
     }
 
-    // Task 3
+    // Task 2
     /*
     @notice Calculates the monthly quota for the lease 
-    @Param originalValue is the original value og the car beeing leased 
+    @Param originalValue is the original value og the car being leased 
     @Param mileage is how many miles the car has driven 
     @Param driverExperience is how long the driver has had its licence 
     @Param mileageCap is how long the lessee can drive the car 
@@ -152,6 +152,8 @@ contract CarLeasing is ERC721, Ownable {
         uint mileageCapIndex,
         uint contractDurationIndex
         ) public payable {
+            require(_ownerOf(tokenId) == owner(),"The car does not exist.");
+            
             Car memory car = cars[tokenId];
 
             // Prevent index out of range errors.
@@ -192,8 +194,12 @@ contract CarLeasing is ERC721, Ownable {
         // Find lease for correct car with tokenId.
         Lease memory lease = leases[tokenId];
 
+        // Needs the lease to be active.
+        require(lease.isActive == true, "Lease is not active.");
         // Needs to be locked. If not we will not transfer the funds.
         require(lease.state == State.Locked, "The lease is already confirmed.");
+        
+
 
         // Find the address to the owner of the car (owner of the contract)
         address payable ownerPayable  = payable(owner());
@@ -248,10 +254,10 @@ contract CarLeasing is ERC721, Ownable {
     @Param tokenId is the car lease that whish to be terminated
     @Param addedMilage is the milage the lessee has added to the car 
     */
-    function terminateLease(uint tokenId, uint addedMileage) private onlyOwner {
+    function terminateLease(uint tokenId, uint addedMileage) private {
         // address carOwner = owner();
         Lease memory lease = leases[tokenId];
-        
+        require(lease.isActive == true, "Lease is not active");
         // Update car mileage
         cars[tokenId].mileage += addedMileage;
 
@@ -276,7 +282,7 @@ contract CarLeasing is ERC721, Ownable {
         require(lease.state == State.Unlocked, "The lease must be confirmed.");
         
         // The monthly quota is not payed for the given month.
-        require(block.timestamp > (lease.startTime + lease.nextMonthlyPaymentDue), "The leasee has payed the monthly quota for the given month. The contract will not be terminated.");
+        require(block.timestamp > (lease.nextMonthlyPaymentDue), "The leasee has payed the monthly quota for the given month. The contract will not be terminated.");
 
         // Lease is terminated.
         terminateLease(tokenId, addedMileage);
@@ -305,6 +311,9 @@ contract CarLeasing is ERC721, Ownable {
         //Checks if the lease has ended 
         require(leaseHasEnded(lease), "Lease has not ended.");
 
+        //Checks that the leasee is the sender of the transaction
+        require(lease.leasee == msg.sender, "Permission denied.");
+
         //Terminate the lease 
         terminateLease(tokenId, addedMileage);
     }
@@ -319,6 +328,9 @@ contract CarLeasing is ERC721, Ownable {
 
         //Checks if the lease has ended 
         require(leaseHasEnded(lease), "Lease has not ended.");
+
+        //Checks that the leasee is the sender of the transaction
+        require(lease.leasee == msg.sender, "Permission denied.");
 
         //add mileage to the leased car when the lease has ended 
         cars[tokenId].mileage += addedMileage;
@@ -355,7 +367,7 @@ contract CarLeasing is ERC721, Ownable {
         uint driverExperience,
         uint mileageCapIndex,
         uint contractDurationIndex) public {
-        
+
         //Terminates the previous contract 
         terminateLeaseOnEnd(tokenId, addedMileage);
 
