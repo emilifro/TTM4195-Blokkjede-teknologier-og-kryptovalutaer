@@ -106,14 +106,17 @@ contract CarLeasing is ERC721, Ownable {
         require(contractDuration > 0, "Contract duration must be greater than 0");
         // Calculates monthly quota for a car.
 
-        
         uint baseQuota = originalValue / 100; // 1% of car value
 
         // Given that mileage will have an impact: a mileage of 100 000 should might reduce the quota by 10%
-
         uint mileageReduction = baseQuota * mileage / 1000000;
 
-        uint insuranceCost = baseQuota * 10 / (100 + driverExperience * 5); // Reduces from 10% of base quota
+        //Upper limit of mileage reduction is 20% of baseQuota
+        if(mileageReduction > baseQuota / 5 ) {
+            mileageReduction = baseQuota / 5;
+        }
+
+        uint insuranceCost = baseQuota * 10 / (100 + driverExperience * 5); // tapers of from 10% of base quota and added to the total cost
 
         uint mileageCapReduction;
         if (mileageCap == 1000) {
