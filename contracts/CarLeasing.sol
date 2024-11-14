@@ -56,7 +56,14 @@ contract CarLeasing is ERC721, Ownable {
     constructor() ERC721("CarLeasing", "CL") {}
 
     // Task 1
-    // @notice Creates a new car as an NFT. The car can be leased to customers after creation.
+    /*
+    @notice Creates a new car as an NFT. The car can be leased to customers after creation.
+    @Param model is the model of the car 
+    @Param color is the color of the car 
+    @Param yearOfMatriculation is the year the car was released 
+    @Param originalValue is the original value of the car
+    @Param mileage is how many miles the car has driven 
+    */
     function createCar(
         string memory model,
         string memory color, 
@@ -75,6 +82,15 @@ contract CarLeasing is ERC721, Ownable {
     }
 
     // Task 3
+    /*
+    @notice Calculates the monthly quota for the lease 
+    @Param originalValue is the original value og the car beeing leased 
+    @Param mileage is how many miles the car has driven 
+    @Param driverExperience is how long the driver has had its licence 
+    @Param mileageCap is how long the lessee can drive the car 
+    @Param contractDurationIndex is the duration of the lease
+    @return the monthly quota 
+    */
     function calculateMonthlyQuota(
         uint originalValue,
         uint mileage,
@@ -82,8 +98,6 @@ contract CarLeasing is ERC721, Ownable {
         uint mileageCap,
         uint contractDuration
       ) private pure returns (uint) {
-        // Making this function pure such that it cannot access any state nor change states
-        // Pure functions do not cost any gas
 
         // Add requirements to make sure there are no negative values.
         require(originalValue > 0, "Original car value must be greater than 0");
@@ -122,7 +136,13 @@ contract CarLeasing is ERC721, Ownable {
     }
 
     // Task 3
-    // @notice Registers a lease for an existing car. Lease is inactive until confirmed by owner.
+    /*
+    @notice Registers a lease for an existing car. Lease is inactive until confirmed by owner.
+    @Param tokenId is the Id of the car lease 
+    @Param driverExperience is how long the driver has had its licence 
+    @Param mileageCapIndex is how many miles the lessee can drive the car 
+    @Param contractDurationIndex is the duration of the lease
+    */ 
     function registerLease(
         uint tokenId,
         uint driverExperience,
@@ -161,7 +181,10 @@ contract CarLeasing is ERC721, Ownable {
     }
 
     // Task 3
-    // @notice Confirms the lease by owner. Lease will become active, and funds will be transfered from leasee to owner of the car. 
+    /* 
+    @notice Confirms the lease by owner. Lease will become active, and funds will be transfered from leasee to owner of the car. 
+    @Param tokenID is the Id of the car lease 
+    */
     function confirmLease(uint tokenId) public onlyOwner {
         // Find lease for correct car with tokenId.
         Lease memory lease = leases[tokenId];
@@ -189,7 +212,10 @@ contract CarLeasing is ERC721, Ownable {
     }
 
     // Task 3 & 4
-    // @notice Used for paying the monthly fee for the lease.
+    /* 
+    @notice Used for paying the monthly fee for the lease.
+    @Param tokenID is the Id of the car lease 
+    */
     function payMonthlyQuota(uint tokenId) public payable {
         // Find lease for correct car with tokenId.
         Lease memory lease = leases[tokenId];
@@ -214,6 +240,11 @@ contract CarLeasing is ERC721, Ownable {
     }
 
     // Task 4 & 5
+    /*
+    @notice Terminates the car lease 
+    @Param tokenId is the car lease that whish to be terminated
+    @Param addedMilage is the milage the lessee has added to the car 
+    */
     function terminateLease(uint tokenId, uint addedMileage) private onlyOwner {
         // address carOwner = owner();
         Lease memory lease = leases[tokenId];
@@ -230,6 +261,11 @@ contract CarLeasing is ERC721, Ownable {
     
 
     // Task 4
+    /*
+    @notice Terminates the lease if the monthly payment is not recived 
+    @Param tokenId is the car lease that whish to be terminated
+    @Param addedMilage is the milage the lessee has added to the car 
+    */
     function terminateLeaseIfMonthlyPaymentNotRecieved(uint tokenId, uint addedMileage) public onlyOwner{
         Lease memory lease = leases[tokenId];
 
